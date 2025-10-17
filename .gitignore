@@ -1,0 +1,9 @@
+# Ignore files from obj/ and exec/
+
+obj/*
+exec/*
+
+# Still keep the folders
+
+!obj/.gitkeep
+!exec/.gitkeep
