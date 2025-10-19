@@ -5,6 +5,7 @@
 #include <SFML/System/Vector2.hpp>
 #include <SFML/Window.hpp>
 #include <SFML/Window/Mouse.hpp>
+#include <algorithm>
 
 using namespace sf;
 
@@ -26,6 +27,7 @@ int main() {
   // float elapsedTime = 0.f;
   RenderWindow window(VideoMode({size, size}), "My simulation");
 
+  Vector2i prevMouse = Mouse::getPosition(window);
   while (window.isOpen()) {
     while (const std::optional event = window.pollEvent()) {
       if (event->is<sf::Event::Closed>()) {
@@ -33,7 +35,10 @@ int main() {
       }
       if (sf::Mouse::isButtonPressed(Mouse::Button::Left)) {
         Vector2i mousePos = Mouse::getPosition(window);
-        f.addDensity(mousePos.x / 10, mousePos.y / 10, 100);
+        Vector2i delta = mousePos - prevMouse;
+        f.addDensity(mousePos.x / scale, mousePos.y / scale, 100);
+        f.addVelocity(mousePos.x / scale, mousePos.y / scale, delta.x, delta.y);
+        prevMouse = mousePos;
       }
     }
 
@@ -41,15 +46,9 @@ int main() {
     for (unsigned int i = 0; i < size; i++) {
       for (unsigned int j = 0; j < size; j++) {
         int d = f.getDensities(i / scale, j / scale);
-        image.setPixel({i, j}, Color(255, 255, 255, 255 * d));
+        image.setPixel({i, j}, Color(0, 0, 255, d * 255));
       }
     }
-    // elapsedTime += clock.restart().asMilliseconds();
-
-    // if (elapsedTime >= .01f) {
-    // elapsedTime = 0.f;
-    //}
-
     texture.update(image);
     window.clear();
     window.draw(sprite);

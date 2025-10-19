@@ -1,4 +1,5 @@
 #include "FluidSimulation.hpp"
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -7,37 +8,39 @@ Fluid::Fluid(const int size, float dt, float diff, float visc, int iter) {
   this->dt = dt;
   this->diff = diff;
   this->visc = visc;
-
   this->iter = iter;
-
   this->s = std::vector<float>(size * size);
   this->density = std::vector<float>(size * size);
-
   this->Vx = std::vector<float>(size * size);
   this->Vy = std::vector<float>(size * size);
-
   this->Vx0 = std::vector<float>(size * size);
   this->Vy0 = std::vector<float>(size * size);
 }
 
+int Fluid::IX(int x, int y) {
+  x = std::clamp(x, 0, size - 1);
+  y = std::clamp(y, 0, size - 1);
+  return x + y * size;
+}
+
 void Fluid::addDensity(int x, int y, int amount) {
   int index = IX(x, y);
-  (this->density)[index] += amount;
+  density[index] += amount;
 }
 
 void Fluid::addVelocity(int x, int y, int amountX, int amountY) {
   int index = IX(x, y);
-  (this->Vx)[index] += amountX;
-  (this->Vy)[index] += amountY;
+  Vx[index] += amountX;
+  Vy[index] += amountY;
 }
 
-void Fluid::diffuse(int b, std::vector<float> x, std::vector<float> x0,
+void Fluid::diffuse(int b, std::vector<float> &x, std::vector<float> &x0,
                     float diff, float dt) {
   float a = dt * diff * (size - 2) * (size - 2);
   lin_solve(b, x, x0, a, 1 + 6 * a);
 }
 
-void Fluid::lin_solve(int b, std::vector<float> x, std::vector<float> x0,
+void Fluid::lin_solve(int b, std::vector<float> &x, std::vector<float> &x0,
                       float a, float c) {
   float cRecip = 1.0 / c;
   for (int k = 0; k < iter; k++) {
@@ -52,8 +55,8 @@ void Fluid::lin_solve(int b, std::vector<float> x, std::vector<float> x0,
   }
 }
 
-void Fluid::project(std::vector<float> velocX, std::vector<float> velocY,
-                    std::vector<float> p, std::vector<float> div) {
+void Fluid::project(std::vector<float> &velocX, std::vector<float> &velocY,
+                    std::vector<float> &p, std::vector<float> &div) {
   for (int j = 1; j < size - 1; j++) {
     for (int i = 1; i < size - 1; i++) {
       div[IX(i, j)] = -0.5f *
@@ -79,64 +82,45 @@ void Fluid::project(std::vector<float> velocX, std::vector<float> velocY,
   set_bnd(2, velocY);
 }
 
-void Fluid::advect(int b, std::vector<float> d, std::vector<float> d0,
-                   std::vector<float> velocX, std::vector<float> velocY,
+void Fluid::advect(int b, std::vector<float> &d, std::vector<float> &d0,
+                   std::vector<float> &velocX, std::vector<float> &velocY,
                    float dt) {
-  float i0, i1, j0, j1;
-
   float dtx = dt * (size - 2);
   float dty = dt * (size - 2);
-
-  float s0, s1, t0, t1;
-  float tmp1, tmp2, x, y;
-
   float Nfloat = size;
-  float ifloat, jfloat;
-  int i, j;
 
-  for (j = 1, jfloat = 1; j < size - 1; j++, jfloat++) {
-    for (i = 1, ifloat = 1; i < size - 1; i++, ifloat++) {
-      tmp1 = dtx * velocX[IX(i, j)];
-      tmp2 = dty * velocY[IX(i, j)];
-      x = ifloat - tmp1;
-      y = jfloat - tmp2;
+  for (int j = 1, jfloat = 1; j < size - 1; j++, jfloat++) {
+    for (int i = 1, ifloat = 1; i < size - 1; i++, ifloat++) {
+      float tmp1 = dtx * velocX[IX(i, j)];
+      float tmp2 = dty * velocY[IX(i, j)];
+      float x = ifloat - tmp1;
+      float y = jfloat - tmp2;
 
-      if (x < 0.5f)
-        x = 0.5f;
-      if (x > Nfloat + 0.5f)
-        x = Nfloat + 0.5f;
-      i0 = std::floorf(x);
-      i1 = i0 + 1.0f;
-      if (y < 0.5f)
-        y = 0.5f;
-      if (y > Nfloat + 0.5f)
-        y = Nfloat + 0.5f;
-      j0 = floorf(y);
-      j1 = j0 + 1.0f;
+      x = std::clamp(x, 0.5f, Nfloat + 0.5f);
+      y = std::clamp(y, 0.5f, Nfloat + 0.5f);
 
-      s1 = x - i0;
-      s0 = 1.0f - s1;
-      t1 = y - j0;
-      t0 = 1.0f - t1;
+      int i0 = std::floor(x);
+      int i1 = i0 + 1;
+      int j0 = std::floor(y);
+      int j1 = j0 + 1;
 
-      int i0i = i0;
-      int i1i = i1;
-      int j0i = j0;
-      int j1i = j1;
+      float s1 = x - i0;
+      float s0 = 1.0f - s1;
+      float t1 = y - j0;
+      float t0 = 1.0f - t1;
 
-      d[IX(i, j)] = s0 * (t0 * d0[IX(i0i, j0i)]) + (t1 * d0[IX(i0i, j1i)]) +
-                    s1 * (t0 * d0[IX(i1i, j0i)] + (t1 * d0[IX(i1i, j1i)]));
+      d[IX(i, j)] = s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)]) +
+                    s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
     }
   }
   set_bnd(b, d);
 }
 
-void Fluid::set_bnd(int b, std::vector<float> x) {
+void Fluid::set_bnd(int b, std::vector<float> &x) {
   for (int i = 1; i < size - 1; i++) {
     x[IX(i, 0)] = b == 2 ? -x[IX(i, 1)] : x[IX(i, 1)];
     x[IX(i, size - 1)] = b == 2 ? -x[IX(i, size - 2)] : x[IX(i, size - 2)];
   }
-
   for (int j = 1; j < size - 1; j++) {
     x[IX(0, j)] = b == 1 ? -x[IX(1, j)] : x[IX(1, j)];
     x[IX(size - 1, j)] = b == 1 ? -x[IX(size - 2, j)] : x[IX(size - 2, j)];
@@ -150,20 +134,8 @@ void Fluid::set_bnd(int b, std::vector<float> x) {
 }
 
 void Fluid::step() {
-  float visc = this->visc;
-  float diff = this->diff;
-  float dt = this->dt;
-
-  std::vector<float> Vx = this->Vx;
-  std::vector<float> Vy = this->Vy;
-  std::vector<float> Vx0 = this->Vx0;
-  std::vector<float> Vy0 = this->Vy0;
-  std::vector<float> s = this->s;
-  std::vector<float> density = this->density;
-
   diffuse(1, Vx0, Vx, visc, dt);
   diffuse(2, Vy0, Vy, visc, dt);
-
   project(Vx0, Vy0, Vx, Vy);
 
   advect(1, Vx, Vx0, Vx0, Vy0, dt);
